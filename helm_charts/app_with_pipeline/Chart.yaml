@@ -1,0 +1,10 @@
+apiVersion: v2
+name: app-with-pipeline
+description: A Helm for deploying simple go app with tekton pipeline
+
+type: application
+
+
+version: 0.0.1
+
+appVersion: 0.0.1

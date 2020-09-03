@@ -1,0 +1,284 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: my-awsome-app-jenkins-template
+
+
+parameters:
+  - name: APP_NAME
+    required: true
+    value: my-awsome-app-jenkins
+  - name: SOURCE_REPOSITORY_URI
+    required: true
+    value: https://github.com/lobziik/ocp-features-webinar-ru.git
+  - name: GIT_BRANCH
+    required: true
+    value: master
+  - name: WEBHOOK_SECRET_NAME
+    required: true
+    value: webhook-secret
+  - name: WEBHOOK_SECRET_VALUE
+    required: true
+  - name: NAMESPACE
+    required: true
+  - name: REGISTRY_HOST
+    value: image-registry.openshift-image-registry.svc:5000
+
+
+objects:
+  ### SOME JENKINS ADJUSTMENTS, SUCH AS CUSTOM BUILDER IMAGE
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      name: jenkins-agent-golang
+      labels:
+        app: ${APP_NAME}
+
+  ### CUSTOM IMAGE BUILD FOR JENKINS AGENT
+  - apiVersion: v1
+    kind: BuildConfig
+    metadata:
+      name: jenkins-agent-golang
+      labels:
+        app: ${APP_NAME}
+    spec:
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
+      output:
+        to:
+          kind: ImageStreamTag
+          name: jenkins-agent-golang:latest
+      strategy:
+        dockerStrategy: {}
+        type: Docker
+      source:
+        type: dockerfile
+        dockerfile: |-
+          FROM openshift/jenkins-slave-base-centos7:latest
+          RUN yum install golang -y
+      triggers:
+        - type: ConfigChange
+
+  ### CONFIGMAP FOR USING CUSTOM AGENT IMAGE
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      labels:
+        app: ${APP_NAME}
+        role: jenkins-slave
+      name: jenkins-slaves
+    data:
+      golang-template: |-
+        <org.csanchez.jenkins.plugins.kubernetes.PodTemplate>
+          <inheritFrom></inheritFrom>
+          <name>golang</name>
+          <privileged>false</privileged>
+          <alwaysPullImage>false</alwaysPullImage>
+          <instanceCap>2147483647</instanceCap>
+          <idleMinutes>0</idleMinutes>
+          <label>golang</label>
+          <serviceAccount>jenkins</serviceAccount>
+          <nodeSelector></nodeSelector>
+          <customWorkspaceVolumeEnabled>false</customWorkspaceVolumeEnabled>
+          <workspaceVolume class="org.csanchez.jenkins.plugins.kubernetes.volumes.workspace.EmptyDirWorkspaceVolume">
+            <memory>true</memory>
+          </workspaceVolume>
+          <volumes />
+          <containers>
+            <org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate>
+              <name>jnlp</name>
+              <image>image-registry.openshift-image-registry.svc:5000/${NAMESPACE}/jenkins-agent-golang</image>
+              <privileged>false</privileged>
+              <alwaysPullImage>false</alwaysPullImage>
+              <workingDir>/tmp</workingDir>
+              <command></command>
+              <args>${computer.jnlpmac} ${computer.name}</args>
+              <ttyEnabled>false</ttyEnabled>
+              <resourceRequestCpu>200m</resourceRequestCpu>
+              <resourceRequestMemory>512Mi</resourceRequestMemory>
+              <resourceLimitCpu>2</resourceLimitCpu>
+              <resourceLimitMemory>4Gi</resourceLimitMemory>
+              <envVars/>
+            </org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate>
+          </containers>
+          <envVars/>
+          <annotations/>
+          <imagePullSecrets/>
+        </org.csanchez.jenkins.plugins.kubernetes.PodTemplate>
+
+
+### APP WITH JENKINS PIPELINE BUILD
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+
+
+  - apiVersion: v1
+    kind: Secret
+    type: Opaque
+    metadata:
+      name: ${WEBHOOK_SECRET_NAME}
+    data:
+      WebHookSecretKey: ${WEBHOOK_SECRET_VALUE}
+
+
+  - apiVersion: v1
+    kind: BuildConfig
+    metadata:
+      name: ${APP_NAME}-tests
+      labels:
+        app: ${APP_NAME}
+    spec:
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
+      strategy:
+        jenkinsPipelineStrategy:
+          jenkinsfile: |-
+            pipeline {
+              agent {
+                label 'golang'
+              }
+
+              stages {
+                stage('Tests') {
+                  steps {
+                    git branch: '${GIT_BRANCH}', url: '${SOURCE_REPOSITORY_URI}'
+                    sh "go test ./app"
+                  }
+                }
+
+                stage('Build app image') {
+                  steps {
+                    script {
+                      openshift.withCluster() {
+                        openshift.withProject() {
+                          openshift.selector("bc", "${APP_NAME}-build").startBuild("--wait=true")
+                        }
+                      }
+                    }
+                  }
+                }
+
+                stage('Deploy') {
+                  steps {
+                    script {
+                      openshift.withCluster() {
+                        openshift.withProject() {
+                          openshift.selector("dc", "${APP_NAME}").rollout().latest();
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+        type: JenkinsPipeline
+      triggers:
+        - type: GitHub
+          github:
+            secretReference:
+              name: ${WEBHOOK_SECRET_NAME}
+
+
+  - apiVersion: v1
+    kind: BuildConfig
+    metadata:
+      name: ${APP_NAME}-build
+      labels:
+        app: ${APP_NAME}
+    spec:
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
+      output:
+        to:
+          kind: ImageStreamTag
+          name: ${APP_NAME}:latest
+      source:
+        git:
+          uri: ${SOURCE_REPOSITORY_URI}
+          ref: ${GIT_BRANCH}
+        contextDir: /app
+        type: Git
+      strategy:
+        type: Source
+        sourceStrategy:
+          from:
+            kind: ImageStreamTag
+            namespace: openshift
+            name: 'golang:latest'
+
+
+  - kind: Service
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      ports:
+        - name: http
+          port: 8080
+          targetPort: 8080
+      selector:
+        app: ${APP_NAME}
+
+
+  - kind: Route
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      port:
+        targetPort: http
+      tls:
+        insecureEdgeTerminationPolicy: Redirect
+        termination: edge
+      to:
+        kind: Service
+        name: ${APP_NAME}
+        weight: 100
+      wildcardPolicy: None
+
+
+  - kind: DeploymentConfig
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      strategy:
+        activeDeadlineSeconds: 21600
+        rollingParams:
+          intervalSeconds: 1
+          maxSurge: 50%
+          maxUnavailable: 50%
+          timeoutSeconds: 600
+          updatePeriodSeconds: 1
+        type: Rolling
+      triggers:
+        - type: ConfigChange
+      replicas: 2
+      selector:
+        app: ${APP_NAME}
+      template:
+        metadata:
+          name: ${APP_NAME}
+          labels:
+            app: ${APP_NAME}
+        spec:
+          containers:
+            - name: ${APP_NAME}
+              image: ${REGISTRY_HOST}/${NAMESPACE}/${APP_NAME}
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 128Mi
+                limits:
+                  cpu: 50m
+                  memory: 256Mi

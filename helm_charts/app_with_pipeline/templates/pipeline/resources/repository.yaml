@@ -1,0 +1,11 @@
+apiVersion: tekton.dev/v1alpha1
+kind: PipelineResource
+metadata:
+  name: repository
+spec:
+  params:
+    - name: url
+      value: 'https://github.com/lobziik/ocp-features-webinar-ru.git'
+    - name: revision
+      value: {{ .Values.git_branch }}
+  type: git

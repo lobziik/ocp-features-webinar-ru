@@ -1,0 +1,157 @@
+### APP BUILD AND DEPLOYMENT, NOTHING MORE
+
+apiVersion: v1
+kind: Template
+metadata:
+  name: my-awsome-app-template
+
+
+parameters:
+  - name: APP_NAME
+    required: true
+    value: my-awsome-app
+  - name: SOURCE_REPOSITORY_URI
+    required: true
+    value: https://github.com/lobziik/ocp-features-webinar-ru.git
+  - name: GIT_BRANCH
+    required: true
+    value: master
+  - name: WEBHOOK_SECRET_NAME
+    required: true
+    value: webhook-secret
+  - name: WEBHOOK_SECRET_VALUE
+    required: true
+  - name: REGISTRY_HOST
+    value: image-registry.openshift-image-registry.svc:5000
+
+objects:
+
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+
+
+  - apiVersion: v1
+    kind: Secret
+    type: Opaque
+    metadata:
+      name: ${WEBHOOK_SECRET_NAME}
+    data:
+      WebHookSecretKey: ${WEBHOOK_SECRET_VALUE}
+
+
+  - apiVersion: v1
+    kind: BuildConfig
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
+      output:
+        to:
+          kind: ImageStreamTag
+          name: ${APP_NAME}:latest
+      source:
+        git:
+          uri: ${SOURCE_REPOSITORY_URI}
+          ref: ${GIT_BRANCH}
+        contextDir: /app
+        type: Git
+      strategy:
+        type: Source
+        sourceStrategy:
+          from:
+            kind: ImageStreamTag
+            namespace: openshift
+            name: 'golang:latest'
+      triggers:
+        - type: GitHub
+          github:
+            secretReference:
+              name: ${WEBHOOK_SECRET_NAME}
+
+
+  - kind: Service
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      ports:
+        - name: http
+          port: 8080
+          targetPort: 8080
+      selector:
+        app: ${APP_NAME}
+
+
+  - kind: Route
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      port:
+        targetPort: http
+      tls:
+        insecureEdgeTerminationPolicy: Redirect
+        termination: edge
+      to:
+        kind: Service
+        name: ${APP_NAME}
+        weight: 100
+      wildcardPolicy: None
+
+
+  - kind: DeploymentConfig
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      strategy:
+        activeDeadlineSeconds: 21600
+        rollingParams:
+          intervalSeconds: 1
+          maxSurge: 50%
+          maxUnavailable: 50%
+          timeoutSeconds: 600
+          updatePeriodSeconds: 1
+        type: Rolling
+      triggers:
+        - type: ConfigChange
+        - type: ImageChange
+          imageChangeParams:
+            automatic: true
+            containerNames:
+              - ${APP_NAME}
+            from:
+              kind: ImageStreamTag
+              name: ${APP_NAME}:latest
+      replicas: 2
+      selector:
+        app: ${APP_NAME}
+      template:
+        metadata:
+          name: ${APP_NAME}
+          labels:
+            app: ${APP_NAME}
+        spec:
+          containers:
+            - name: ${APP_NAME}
+              image: ${REGISTRY_HOST}/${NAMESPACE}/${APP_NAME}
+              resources:
+                requests:
+                  cpu: 25m
+                  memory: 128Mi
+                limits:
+                  cpu: 50m
+                  memory: 256Mi

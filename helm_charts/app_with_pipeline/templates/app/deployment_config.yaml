@@ -1,0 +1,42 @@
+kind: DeploymentConfig
+apiVersion: apps.openshift.io/v1
+metadata:
+  name: {{ .Values.deployment_name}}
+  labels:
+    app: {{ .Values.deployment_name}}
+spec:
+  strategy:
+    type: Rolling
+    rollingParams:
+      updatePeriodSeconds: 1
+      intervalSeconds: 1
+      timeoutSeconds: 600
+      maxUnavailable: 50%
+      maxSurge: 50%
+    resources: {}
+    activeDeadlineSeconds: 21600
+  triggers:
+    - type: ConfigChange
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    app: {{ .Values.deployment_name}}
+  template:
+    metadata:
+      name: {{ .Values.deployment_name}}
+      labels:
+        app: {{ .Values.deployment_name}}
+    spec:
+      containers:
+        - name: {{ .Values.deployment_name}}
+          image: >-
+            image-registry.openshift-image-registry.svc:5000/{{ .Release.Namespace }}/{{ .Values.image_stream_name }}
+          resources:
+            limits:
+              cpu: 50m
+              memory: 256Mi
+            requests:
+              cpu: 25m
+              memory: 128Mi
+          imagePullPolicy: Always
+      restartPolicy: Always

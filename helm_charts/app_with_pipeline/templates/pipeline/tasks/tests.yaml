@@ -1,0 +1,16 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: tests
+spec:
+  steps:
+    - command:
+        - go
+        - test
+        - ./app
+      image: 'golang'
+      name: 'tests'
+      resources: {}
+      workingDir: /workspace/source
+  workspaces:
+    - name: source

@@ -1,0 +1,39 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: {{ .Values.pipeline_name }}-trigger-template
+spec:
+  params:
+    - name: git-revision
+    - name: git-commit-message
+    - name: git-repo-url
+    - name: git-repo-name
+    - name: content-type
+    - name: pusher-name
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: {{ .Values.pipeline_name }}-$(uid)
+        labels:
+          tekton.dev/pipeline: {{ .Values.pipeline_name }}
+      spec:
+        params: []
+        pipelineRef:
+          name: my-awsome-app-tekton-pipeline
+        resources:
+          - name: repository
+            resourceRef:
+              name: repository
+          - name: my-awsome-app-image
+            resourceRef:
+              name: image-registry
+        workspaces:
+          - name: shared-workspace
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 500Mi

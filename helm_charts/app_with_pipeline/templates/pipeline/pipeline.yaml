@@ -1,0 +1,79 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: {{ .Values.pipeline_name }}
+spec:
+  resources:
+    - name: repository
+      type: git
+    - name: my-awsome-app-image
+      type: image
+  tasks:
+    - name: git-clone
+      params:
+        - name: url
+          value: 'https://github.com/lobziik/ocp-features-webinar-ru.git'
+        - name: revision
+          value: {{ .Values.git_branch }}
+        - name: submodules
+          value: 'true'
+        - name: depth
+          value: '1'
+        - name: sslVerify
+          value: 'true'
+        - name: deleteExisting
+          value: 'true'
+      taskRef:
+        kind: ClusterTask
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+
+    - name: tests
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: tests
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    - name: build-image
+      params:
+        - name: BUILDER_IMAGE
+          value: registry.redhat.io/rhel8/buildah
+        - name: DOCKERFILE
+          value: ./app/Dockerfile
+        - name: CONTEXT
+          value: ./app
+        - name: TLSVERIFY
+          value: 'false'
+        - name: FORMAT
+          value: oci
+      resources:
+        inputs:
+          - name: source
+            resource: repository
+        outputs:
+          - name: image
+            resource: my-awsome-app-image
+      runAfter:
+        - tests
+      taskRef:
+        kind: ClusterTask
+        name: buildah-pr
+
+    - name: update-deployment
+      taskRef:
+        name: update-deployment
+      params:
+        - name: deployment
+          value: {{ .Values.deployment_name }}
+        - name: IMAGE
+          value: image-registry.openshift-image-registry.svc:5000/{{ .Release.Namespace }}/{{ .Values.image_stream_name }}:latest
+      runAfter:
+        - build-image
+  workspaces:
+    - name: shared-workspace

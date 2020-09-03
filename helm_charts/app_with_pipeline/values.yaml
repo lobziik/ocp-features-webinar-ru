@@ -1,0 +1,7 @@
+
+
+pipeline_name: my-awsome-app-tekton-pipeline
+deployment_name: my-awsome-app
+image_stream_name: my-awsome-app-image
+
+git_branch: master
