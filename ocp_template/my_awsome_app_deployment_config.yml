@@ -3,6 +3,7 @@ kind: Template
 metadata:
   name: my-awsome-app
 
+
 parameters:
   - name: APP_NAME
     required: true
@@ -10,6 +11,11 @@ parameters:
   - name: SOURCE_REPOSITORY_URI
     required: true
     value: https://github.com/lobziik/ocp-features-webinar-ru.git
+  - name: WEBHOOK_SECRET_NAME
+    required: true
+    value: webhook-secret
+  - name: WEBHOOK_SECRET_VALUE
+    required: true
 
 
 objects:
@@ -20,6 +26,13 @@ objects:
       labels:
         app: ${APP_NAME}
 
+  - apiVersion: v1
+    kind: Secret
+    type: Opaque
+    metadata:
+      name: ${WEBHOOK_SECRET_NAME}
+    data:
+      WebHookSecretKey: ${WEBHOOK_SECRET_VALUE}
 
   - apiVersion: v1
     kind: BuildConfig
@@ -51,11 +64,11 @@ objects:
         - type: Generic
           generic:
             secretReference:
-              name: golang-ex-generic-webhook-secret
+              name: ${WEBHOOK_SECRET_NAME}
         - type: GitHub
           github:
             secretReference:
-              name: golang-ex-github-webhook-secret
+              name: ${WEBHOOK_SECRET_NAME}
         - type: ImageChange
 
 

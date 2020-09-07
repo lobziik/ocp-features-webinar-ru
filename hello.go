@@ -8,7 +8,8 @@ import (
 )
 
 func AwsomeServer(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, %s!", r.URL.Path[1:])
+	NAME := "MIKE"
+	fmt.Fprintf(w, "Hello, %s!", NAME)
 }
 
 func main() {
