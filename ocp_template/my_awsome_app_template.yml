@@ -10,9 +10,7 @@ parameters:
   - name: SOURCE_REPOSITORY_URI
     required: true
     value: https://github.com/lobziik/ocp-features-webinar-ru.git
-  - name: HOST
-    required: true
-    value: "awsome-app.apps.ca-central-1.starter.openshift-online.com"
+
 
 objects:
   - apiVersion: v1
