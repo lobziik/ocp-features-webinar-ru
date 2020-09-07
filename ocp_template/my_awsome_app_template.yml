@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: my-awsome-app
+
+parameters:
+  - name: APP_NAME
+    required: true
+    value: my-awsome-app
+  - name: SOURCE_REPOSITORY_URI
+    required: true
+    value: https://github.com/lobziik/ocp-features-webinar-ru.git
+  - name: HOST
+    required: true
+    value: "awsome-app.apps.ca-central-1.starter.openshift-online.com"
+
+objects:
+  - apiVersion: v1
+    kind: ImageStream
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+
+
+  - apiVersion: v1
+    kind: BuildConfig
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
+      output:
+        to:
+          kind: ImageStreamTag
+          name: ${APP_NAME}:latest
+      source:
+        git:
+          uri: ${SOURCE_REPOSITORY_URI}
+          ref: master
+        contextDir: /
+        type: Git
+      strategy:
+        type: Source
+        sourceStrategy:
+          from:
+            kind: ImageStreamTag
+            namespace: openshift
+            name: 'golang:latest'
+      triggers:
+        - type: Generic
+          generic:
+            secretReference:
+              name: golang-ex-generic-webhook-secret
+        - type: GitHub
+          github:
+            secretReference:
+              name: golang-ex-github-webhook-secret
+        - type: ImageChange
+
+
+  - kind: Service
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      ports:
+        - name: http
+          port: 8080
+          targetPort: 8080
+      selector:
+        app: ${APP_NAME}
+
+
+  - kind: Route
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      port:
+        targetPort: http
+      tls:
+        insecureEdgeTerminationPolicy: Redirect
+        termination: edge
+      to:
+        kind: Service
+        name: ${APP_NAME}
+        weight: 100
+      wildcardPolicy: None
+
+
+  - kind: DeploymentConfig
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      labels:
+        app: ${APP_NAME}
+    spec:
+      strategy:
+        activeDeadlineSeconds: 21600
+        rollingParams:
+          intervalSeconds: 1
+          maxSurge: 50%
+          maxUnavailable: 50%
+          timeoutSeconds: 600
+          updatePeriodSeconds: 1
+        type: Rolling
+      triggers:
+        - type: ConfigChange
+        - type: ImageChange
+          imageChangeParams:
+            automatic: true
+            containerNames:
+              - ${APP_NAME}
+            from:
+              kind: ImageStreamTag
+              name: ${APP_NAME}:latest
+      replicas: 2
+      selector:
+        app: ${APP_NAME}
+      template:
+        metadata:
+          name: ${APP_NAME}
+          labels:
+            app: ${APP_NAME}
+        spec:
+          containers:
+            - name: ${APP_NAME}
+              image: " "
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
