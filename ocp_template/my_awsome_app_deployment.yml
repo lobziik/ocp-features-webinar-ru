@@ -106,7 +106,7 @@ objects:
       wildcardPolicy: None
 
 
-  - kind: DeploymentConfig
+  - kind: Deployment
     apiVersion: v1
     metadata:
       name: ${APP_NAME}
