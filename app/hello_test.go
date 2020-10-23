@@ -9,6 +9,7 @@ import (
 func TestAwsomeServer(t *testing.T) {
 	const expectedResponse = "Hello, TEKTON!"
 
+
 	mockRecorder := httptest.NewRecorder()
 	mockRequest := httptest.NewRequest("GET", "/", nil)
 	AwsomeServer(mockRecorder, mockRequest)
