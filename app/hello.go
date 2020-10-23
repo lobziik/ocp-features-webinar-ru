@@ -8,7 +8,7 @@ import (
 )
 
 func AwsomeServer(w http.ResponseWriter, r *http.Request) {
-	NAME := "MIKE"
+	NAME := "TEKTON"
 	fmt.Fprintf(w, "Hello, %s!", NAME)
 }
 
